@@ -119,4 +119,43 @@ public struct LensTintSegmentedPicker<Value: Hashable>: UIViewRepresentable {
         guard !view.isUserInteracting else { return }
         view.applySelection(index: segments.firstIndex { $0.value == selection } ?? 0)
     }
+
+    /// Sizes like a native segmented `Picker`: fills the width it is offered,
+    /// stands the control's own height. The wrapper carries no constraints and
+    /// no intrinsic size of its own, so without this the default algorithm has
+    /// nothing to stand on and every call site has to name a height.
+    public func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: LensTintSegmentedControlView,
+        context: Context
+    ) -> CGSize? {
+        SegmentedPickerSizing.size(for: proposal, intrinsic: uiView.control.intrinsicContentSize)
+    }
+}
+
+/// How the picker answers a size proposal.
+///
+/// The axes answer differently on purpose, which is the whole content of this
+/// type. **Width is whatever is offered**, including the zero and infinity
+/// probes a stack uses to measure flexibility: answering those with the
+/// intrinsic width would declare the control unstretchable and it would stop
+/// filling its row. **Height is the control's own** unless a call site names
+/// one — that is what keeps `.frame(height:)` meaningful while leaving the
+/// rail unstretched by a tall row.
+enum SegmentedPickerSizing {
+
+    static func size(for proposal: ProposedViewSize, intrinsic: CGSize) -> CGSize {
+        CGSize(
+            width: proposal.width ?? intrinsic.width,
+            height: definiteHeight(proposal.height) ?? intrinsic.height
+        )
+    }
+
+    /// A height worth honoring: a real, finite request. The zero and infinity
+    /// probes are questions about flexibility, not allocations, and this
+    /// control has no vertical flexibility to report.
+    private static func definiteHeight(_ value: CGFloat?) -> CGFloat? {
+        guard let value, value.isFinite, value > 0 else { return nil }
+        return value
+    }
 }
