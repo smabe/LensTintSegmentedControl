@@ -135,6 +135,24 @@ public final class LensTintSegmentedControlView: UIView {
         railTouchActive || pendingCommitIndex != nil
     }
 
+    /// Reasserts a Dynamic-Type-scaled title font into both states'
+    /// attributes, preserving whatever colours each state carries. No-ops when
+    /// the size is unchanged — this runs on every SwiftUI update, and an
+    /// unconditional reset would force a mask rebuild per update.
+    public func applyTitleFont(_ font: UIFont) {
+        let current = control.titleTextAttributes(for: .normal)?[.font] as? UIFont
+        guard current?.pointSize != font.pointSize else { return }
+        for state in [UIControl.State.normal, .selected] {
+            var attributes = control.titleTextAttributes(for: state) ?? [:]
+            attributes[.font] = font
+            control.setTitleTextAttributes(attributes, for: state)
+        }
+        // The glyph signature usually catches this via label frames, but an
+        // explicit invalidation removes the dependency on frames moving.
+        lastGlyphSignature = ""
+        noteActivity()
+    }
+
     /// Programmatic selection sync (for binding writes). Also the anchor a
     /// cancelled gesture rolls back to.
     public func applySelection(index: Int) {
@@ -390,7 +408,12 @@ public final class LensTintSegmentedControlView: UIView {
     private func engageFallback() {
         isFallenBack = true
         overlay.removeFromSuperview()
-        control.setTitleTextAttributes([.foregroundColor: accent], for: .selected)
+        // Merge, don't replace: the selected state may also carry a
+        // Dynamic-Type-scaled title font, and a colour-only dictionary here
+        // would silently shrink the active segment back to stock.
+        var selected = control.titleTextAttributes(for: .selected) ?? [:]
+        selected[.foregroundColor] = accent
+        control.setTitleTextAttributes(selected, for: .selected)
         Logger(
             subsystem: Bundle.main.bundleIdentifier ?? "LensTintSegmentedControl",
             category: "LensTint"

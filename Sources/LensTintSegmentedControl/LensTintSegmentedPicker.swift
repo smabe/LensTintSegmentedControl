@@ -39,6 +39,11 @@ public struct LensTintSegment<Value: Hashable> {
 public struct LensTintSegmentedPicker<Value: Hashable>: UIViewRepresentable {
 
     @Binding private var selection: Value
+    /// Read so a live Dynamic Type change re-invokes `updateUIView` — SwiftUI
+    /// neither remounts the backing control nor re-applies appearance proxies
+    /// to a view already in a window, so this dependency is the only thing
+    /// that carries a live size change in.
+    @Environment(\.dynamicTypeSize) private var typeSize
     private let segments: [LensTintSegment<Value>]
     private let accent: Color
     private let restingTitleColor: Color
@@ -90,7 +95,8 @@ public struct LensTintSegmentedPicker<Value: Hashable>: UIViewRepresentable {
         // there replaces it with a flat fill.
         control.selectedSegmentTintColor = nil
         let resting: [NSAttributedString.Key: Any] = [
-            .foregroundColor: UIColor(restingTitleColor)
+            .foregroundColor: UIColor(restingTitleColor),
+            .font: SegmentedTitleFont.scaled(for: typeSize)
         ]
         control.setTitleTextAttributes(resting, for: .normal)
         control.setTitleTextAttributes(resting, for: .selected)
@@ -101,6 +107,7 @@ public struct LensTintSegmentedPicker<Value: Hashable>: UIViewRepresentable {
     }
 
     public func updateUIView(_ view: LensTintSegmentedControlView, context: Context) {
+        view.applyTitleFont(SegmentedTitleFont.scaled(for: typeSize))
         // Rebound every update: the closure writes to THIS view value's
         // binding; an older closure would write through a stale one.
         let segments = segments
@@ -129,7 +136,44 @@ public struct LensTintSegmentedPicker<Value: Hashable>: UIViewRepresentable {
         uiView: LensTintSegmentedControlView,
         context: Context
     ) -> CGSize? {
-        SegmentedPickerSizing.size(for: proposal, intrinsic: uiView.control.intrinsicContentSize)
+        let intrinsic = uiView.control.intrinsicContentSize
+        return SegmentedPickerSizing.size(
+            for: proposal,
+            intrinsic: intrinsic,
+            railHeight: SegmentedPickerSizing.railHeight(
+                intrinsic: intrinsic.height,
+                titleLineHeight: SegmentedTitleFont.scaled(for: typeSize).lineHeight,
+                stockLineHeight: SegmentedTitleFont.stockLineHeight
+            )
+        )
+    }
+}
+
+/// The title font the rail renders. The stock control draws a fixed 13pt
+/// system face at every Dynamic Type size and UIKit offers no opt-in — so the
+/// scaled equivalent is computed here and asserted through
+/// `setTitleTextAttributes`, sized off the SwiftUI environment's
+/// `dynamicTypeSize` rather than the control's traits (a control not yet in a
+/// window answers traits SwiftUI has not configured yet).
+enum SegmentedTitleFont {
+
+    /// The stock control's title size; the scale anchor.
+    private static let stockSize: CGFloat = 13
+
+    /// What `railHeight` treats as the line the stock rail was built around,
+    /// so at the default size the computed rail is exactly stock.
+    static var stockLineHeight: CGFloat {
+        UIFont.systemFont(ofSize: stockSize).lineHeight
+    }
+
+    static func scaled(for size: DynamicTypeSize) -> UIFont {
+        // UIContentSizeCategory(_:) is UIKit's own bridge from SwiftUI's
+        // DynamicTypeSize (iOS 15+) — never hand-roll the 12-case mapping.
+        UIFontMetrics(forTextStyle: .footnote).scaledFont(
+            for: .systemFont(ofSize: stockSize),
+            compatibleWith: UITraitCollection(
+                preferredContentSizeCategory: UIContentSizeCategory(size))
+        )
     }
 }
 
@@ -144,11 +188,27 @@ public struct LensTintSegmentedPicker<Value: Hashable>: UIViewRepresentable {
 /// rail unstretched by a tall row.
 enum SegmentedPickerSizing {
 
-    static func size(for proposal: ProposedViewSize, intrinsic: CGSize) -> CGSize {
+    /// Explicit call-site heights win; otherwise the rail stands its own
+    /// font-derived height.
+    static func size(
+        for proposal: ProposedViewSize, intrinsic: CGSize, railHeight: CGFloat
+    ) -> CGSize {
         CGSize(
             width: proposal.width ?? intrinsic.width,
-            height: definiteHeight(proposal.height) ?? intrinsic.height
+            height: definiteHeight(proposal.height) ?? railHeight
         )
+    }
+
+    /// The rail's height under a Dynamic-Type-scaled title font. UIKit never
+    /// grows the control for its font, so the height is computed: the
+    /// intrinsic height plus however much taller the scaled font's line is
+    /// than the stock one — which preserves the stock chrome around the text
+    /// and makes the default size exactly the stock rail. Never below the
+    /// intrinsic: small text sizes must not shrink the rail.
+    static func railHeight(
+        intrinsic: CGFloat, titleLineHeight: CGFloat, stockLineHeight: CGFloat
+    ) -> CGFloat {
+        max(intrinsic, intrinsic + (titleLineHeight - stockLineHeight))
     }
 
     /// A height worth honoring: a real, finite request. The zero and infinity

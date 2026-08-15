@@ -11,6 +11,10 @@ This package grafts that lens-positional tint onto a real
 Health's picker has and the stock control doesn't: the bar swells and
 densifies while the thumb is held, and relaxes on release.
 
+It also fixes the stock control's oldest accessibility gap: segment titles
+scale with **Dynamic Type** (the bare control pins them at 13pt forever), and
+the rail grows to fit.
+
 ![demo](demo.gif)
 
 ## Usage
@@ -33,8 +37,12 @@ LensTintSegmentedPicker(
     ],
     accent: .green
 )
-.frame(height: 44)
 ```
+
+The picker sizes itself — full width, the rail's own height, which scales
+with Dynamic Type. If you do set a `.frame(height:)`, it is honored
+verbatim, so derive the value from the environment's `dynamicTypeSize`
+instead of hardcoding one that clips at accessibility sizes.
 
 UIKit: wrap your own `UISegmentedControl` in `LensTintSegmentedControlView`
 (set `selectedSegmentTintColor = nil` and pin both title states to your

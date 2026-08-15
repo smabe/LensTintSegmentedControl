@@ -10,7 +10,11 @@ let package = Package(
         .library(name: "LensTintSegmentedControl", targets: ["LensTintSegmentedControl"])
     ],
     targets: [
-        .target(name: "LensTintSegmentedControl")
+        .target(name: "LensTintSegmentedControl"),
+        .testTarget(
+            name: "LensTintSegmentedControlTests",
+            dependencies: ["LensTintSegmentedControl"]
+        )
     ],
     swiftLanguageModes: [.v6]
 )
